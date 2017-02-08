@@ -113,7 +113,8 @@ module Lita
         end
 
         def dispatch_message(user)
-          source = Source.new(user: user, room: channel)
+          room = Lita::Room.find_by_id(channel)
+          source = Source.new(user: user, room: room || channel)
           source.private_message! if channel && channel[0] == "D"
           message = Message.new(robot, body, source)
           message.command! if source.private_message?
@@ -123,11 +124,7 @@ module Lita
         end
 
         def from_self?(user)
-          if data["subtype"] == "bot_message"
-            robot_user = User.find_by_name(robot.name)
-
-            robot_user && robot_user.id == user.id
-          end
+          user.id == robot_id
         end
 
         def handle_bot_change
@@ -154,6 +151,7 @@ module Lita
 
         def handle_message
           return unless supported_subtype?
+          return if data["user"] == 'USLACKBOT'
 
           user = User.find_by_id(data["user"]) || User.create(data["user"])
 
@@ -171,8 +169,11 @@ module Lita
           # avoid processing reactions added/removed by self
           return if from_self?(user)
 
+          # find or create item_user
+          item_user = User.find_by_id(data["item_user"]) || User.create(data["item_user"])
+
           # build a payload following slack convention for reactions
-          payload = { user: user, name: data["reaction"], item: data["item"], event_ts: data["event_ts"] }
+          payload = { user: user, name: data["reaction"], item_user: item_user, item: data["item"], event_ts: data["event_ts"] }
 
           # trigger the appropriate slack reaction event
           robot.trigger("slack_#{type}".to_sym, payload)
